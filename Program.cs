@@ -64,7 +64,7 @@ static class Program
         var sw = FindWindowEx(rebar, IntPtr.Zero, "MSTaskSwWClass", null);
         return FindWindowEx(sw, IntPtr.Zero, "MSTaskListWClass", null);
     }
-    const int AdjustX = 35; // positivo move para a direita, negativo para a esquerda
+    const int AdjustX = 28; // positivo move para a direita, negativo para a esquerda
 
     static void Center()
     {
