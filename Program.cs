@@ -6,7 +6,7 @@ using System.Windows.Automation;
 using System.Windows.Forms;
 using Timer = System.Windows.Forms.Timer;
 
-namespace TaskbarLite;
+namespace TricBar;
 
 static class Program
 {
@@ -135,8 +135,8 @@ static class Program
         var menu = new ContextMenuStrip();
         var icon = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
-            Text = "TaskbarLite",
+            Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application,
+            Text = "TricBar",
             Visible = true,
             ContextMenuStrip = menu
         };
