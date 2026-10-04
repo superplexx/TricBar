@@ -22,6 +22,8 @@ TricBar is a lightweight tray application that makes the Windows taskbar transpa
 * Automatically restores the default taskbar when closed
 * Detects whether the Windows 11 taskbar was successfully modified
 * Can run quietly in the background
+* Only transparency working in Windows 11
+* In Windows 10 Blur and Transparency working perfectly
 
 ---
 
@@ -395,6 +397,8 @@ No Windows 11, o TricBar pode aplicar efeitos como **Transparente, Blur, Acrylic
 * Restaura a barra padrão ao fechar
 * Detecta quando a barra do Windows 11 foi encontrada
 * Executa silenciosamente em segundo plano
+* No Windows 11 só a Transparência está funcionando
+* No Windows 10 o Blur e a Transparência estão funcionando perfeitamente
 
 ---
 
