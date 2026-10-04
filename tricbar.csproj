@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AssemblyTitle>TricBar</AssemblyTitle>
+    <Product>TricBar</Product>
+    <Company>Superplex</Company>
+    <Description>Transparent and centralized taskbar for Windows 10 and 11</Description>
+    <Version>2.0.0</Version>
+    <Copyright>© 2026 Superplex</Copyright>
+    <ApplicationIcon>icon.ico</ApplicationIcon>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+  <!-- TricBarTap.dll (Windows 11 22H2+): gere com native\build.bat; vai junto do .exe -->
+  <ItemGroup Condition="Exists('native\bin\TricBarTap.dll')">
+    <None Include="native\bin\TricBarTap.dll" Link="TricBarTap.dll"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
+
+
