@@ -1,0 +1,4 @@
+LIBRARY TricBarTap
+EXPORTS
+    DllGetClassObject PRIVATE
+    DllCanUnloadNow   PRIVATE
