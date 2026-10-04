@@ -1,19 +1,44 @@
-﻿using System;
-using System.Drawing;
+using System;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Windows.Automation;
-using System.Windows.Forms;
-using Timer = System.Windows.Forms.Timer;
 
 namespace TricBar;
 
 static class Program
 {
-    // ---------- WinAPI ----------
     const uint SWP_NOSIZE = 0x1, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10;
+    const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+    const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
+    const uint EVENT_OBJECT_CREATE = 0x8000;
+    const uint EVENT_OBJECT_LOCATIONCHANGE = 0x800B;
+    const uint EVENT_OBJECT_NAMECHANGE = 0x800C;
+    const uint OBJID_CLIENT = 0xFFFFFFFC;
+    const int WCA_ACCENT_POLICY = 19;
+    const int ACCENT_DISABLED = 0;
+    const int ACCENT_ENABLE_TRANSPARENTGRADIENT = 2;
+    const int AdjustX = 28; // positivo move para a direita, negativo para a esquerda
+    const int CHILDID_SELF = 0;
+    const int MaxTaskbars = 16;
+
+    const int WM_DESTROY = 0x0002;
+    const int WM_COMMAND = 0x0111;
+    const int WM_TIMER = 0x0113;
+    const int WM_RBUTTONUP = 0x0205;
+    const int WM_USER = 0x0400;
+    const int WM_NULL = 0x0000;
+    const int WM_TRAY = WM_USER + 1;
+    const int ID_EXIT = 1;
+    const nuint ID_KEEPALIVE = 1;
+    const nuint ID_DEBOUNCE = 2;
+    const uint NIM_ADD = 0, NIM_DELETE = 2;
+    const uint NIF_MESSAGE = 1, NIF_ICON = 2, NIF_TIP = 4;
+    const uint MF_STRING = 0;
+    const uint TPM_RIGHTBUTTON = 0x0002;
+    const uint CS_DBLCLKS = 0x0008;
 
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     static extern IntPtr FindWindow(string cls, string? title);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -25,6 +50,54 @@ static class Program
     static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")]
     static extern int SetWindowCompositionAttribute(IntPtr h, ref WCAD data);
+    [DllImport("user32.dll")]
+    static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmodWinEventProc,
+        WinEventDelegate lpfnWinEventProc, uint idProcess, uint idThread, uint dwFlags);
+    [DllImport("user32.dll")] static extern bool UnhookWinEvent(IntPtr hWinEventHook);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern ushort RegisterClassW(ref WNDCLASS lpWndClass);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern IntPtr CreateWindowExW(uint exStyle, string cls, string title, uint style,
+        int x, int y, int w, int h, IntPtr parent, IntPtr menu, IntPtr instance, IntPtr param);
+    [DllImport("user32.dll")] static extern bool DestroyWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] static extern IntPtr DefWindowProcW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] static extern int GetMessageW(out MSG lpMsg, IntPtr hWnd, uint min, uint max);
+    [DllImport("user32.dll")] static extern bool TranslateMessage(ref MSG lpMsg);
+    [DllImport("user32.dll")] static extern IntPtr DispatchMessageW(ref MSG lpMsg);
+    [DllImport("user32.dll")] static extern void PostQuitMessage(int nExitCode);
+    [DllImport("user32.dll")] static extern IntPtr SetTimer(IntPtr hWnd, nuint nIDEvent, uint uElapse, IntPtr lpTimerFunc);
+    [DllImport("user32.dll")] static extern bool KillTimer(IntPtr hWnd, nuint nIDEvent);
+    [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT lpPoint);
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] static extern bool PostMessageW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern IntPtr CreatePopupMenu();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern bool AppendMenuW(IntPtr hMenu, uint uFlags, nuint uIDNewItem, string lpNewItem);
+    [DllImport("user32.dll")]
+    static extern bool TrackPopupMenu(IntPtr hMenu, uint uFlags, int x, int y, int nReserved, IntPtr hWnd, IntPtr prcRect);
+    [DllImport("user32.dll")] static extern bool DestroyMenu(IntPtr hMenu);
+    [DllImport("user32.dll")] static extern bool DestroyIcon(IntPtr hIcon);
+    [DllImport("user32.dll")] static extern IntPtr LoadIconW(IntPtr hInstance, IntPtr lpIconName);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    static extern IntPtr GetModuleHandleW(string? lpModuleName);
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    static extern bool Shell_NotifyIconW(uint dwMessage, ref NOTIFYICONDATA lpData);
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    static extern uint ExtractIconExW(string lpszFile, int nIconIndex, out IntPtr phiconLarge, out IntPtr phiconSmall, uint nIcons);
+    [DllImport("oleacc.dll")]
+    static extern int AccessibleObjectFromWindow(IntPtr hwnd, uint dwObjectID, ref Guid riid,
+        [MarshalAs(UnmanagedType.Interface)] out object ppvObject);
+    [DllImport("oleacc.dll")]
+    static extern int AccessibleChildren(
+        [MarshalAs(UnmanagedType.Interface)] IAccessible paccContainer,
+        int iChildStart, int cChildren,
+        [Out, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 2)] object[] rgvarChildren,
+        out int pcObtained);
+
+    delegate void WinEventDelegate(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
+        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
+    delegate IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     [StructLayout(LayoutKind.Sequential)] struct RECT { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
@@ -32,123 +105,395 @@ static class Program
     struct ACCENT { public int State; public int Flags; public uint Color; public int AnimationId; }
     [StructLayout(LayoutKind.Sequential)]
     struct WCAD { public int Attribute; public IntPtr Data; public int Size; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct MSG
+    {
+        public IntPtr hwnd;
+        public uint message;
+        public IntPtr wParam;
+        public IntPtr lParam;
+        public uint time;
+        public POINT pt;
+    }
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct WNDCLASS
+    {
+        public uint style;
+        public IntPtr lpfnWndProc;
+        public int cbClsExtra;
+        public int cbWndExtra;
+        public IntPtr hInstance;
+        public IntPtr hIcon;
+        public IntPtr hCursor;
+        public IntPtr hbrBackground;
+        public string? lpszMenuName;
+        public string lpszClassName;
+    }
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct NOTIFYICONDATA
+    {
+        public int cbSize;
+        public IntPtr hWnd;
+        public uint uID;
+        public uint uFlags;
+        public uint uCallbackMessage;
+        public IntPtr hIcon;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string szTip;
+        public uint dwState;
+        public uint dwStateMask;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+        public string szInfo;
+        public uint uVersion;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+        public string szInfoTitle;
+        public uint dwInfoFlags;
+        public Guid guidItem;
+        public IntPtr hBalloonIcon;
+    }
 
-    // ---------- Transparência ----------
+    [ComImport]
+    [Guid("618736E0-3C3D-11CF-810C-00AA00389B71")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+    interface IAccessible
+    {
+        [DispId(-5001)] int accChildCount { get; }
+        [DispId(-5015)]
+        void accLocation(out int pxLeft, out int pyTop, out int pcxWidth, out int pcyHeight,
+            [In, Optional] object varChild);
+    }
+
+    static readonly int Build = Environment.OSVersion.Version.Build;
+    static readonly bool IsWin11 = Build >= 22000;
+    static readonly Guid IidIAccessible = new("618736E0-3C3D-11CF-810C-00AA00389B71");
+    static readonly WinEventDelegate EventProc = OnWinEvent;
+    static readonly WndProc WindowProcKeepAlive = WndProcImpl;
+
+    static readonly IntPtr[] Taskbars = new IntPtr[MaxTaskbars];
+    static int _taskbarCount;
+
+    static IntPtr _hwnd, _tray, _list, _parent, _hook, _accentMem, _iconLarge, _iconSmall;
+    static uint _explorerPid;
+    static int _accentSize, _safety;
+    static bool _exiting;
+
     static void SetAccent(IntPtr hwnd, int state)
     {
         if (hwnd == IntPtr.Zero) return;
-        var accent = new ACCENT { State = state, Flags = 2, Color = 0x00000000 }; // alpha 0 = transparente
-        int size = Marshal.SizeOf<ACCENT>();
-        IntPtr ptr = Marshal.AllocHGlobal(size);
-        try
-        {
-            Marshal.StructureToPtr(accent, ptr, false);
-            var data = new WCAD { Attribute = 19, Data = ptr, Size = size }; // 19 = WCA_ACCENT_POLICY
-            SetWindowCompositionAttribute(hwnd, ref data);
-        }
-        finally { Marshal.FreeHGlobal(ptr); }
+        var accent = new ACCENT { State = state, Flags = 2, Color = 0x00000000 };
+        Marshal.StructureToPtr(accent, _accentMem, false);
+        var data = new WCAD { Attribute = WCA_ACCENT_POLICY, Data = _accentMem, Size = _accentSize };
+        SetWindowCompositionAttribute(hwnd, ref data);
     }
 
-    static void ForEachTaskbar(Action<IntPtr> action)
+    static void RefreshTaskbars()
     {
-        action(FindWindow("Shell_TrayWnd", null));
+        _taskbarCount = 0;
+        var primary = FindWindow("Shell_TrayWnd", null);
+        if (primary != IntPtr.Zero) Taskbars[_taskbarCount++] = primary;
+
         IntPtr h = IntPtr.Zero;
-        while ((h = FindWindowEx(IntPtr.Zero, h, "Shell_SecondaryTrayWnd", null)) != IntPtr.Zero)
-            action(h);
+        while (_taskbarCount < MaxTaskbars &&
+               (h = FindWindowEx(IntPtr.Zero, h, "Shell_SecondaryTrayWnd", null)) != IntPtr.Zero)
+            Taskbars[_taskbarCount++] = h;
     }
 
-    // ---------- Centralização (barra principal) ----------
+    static bool TaskbarsStale()
+    {
+        if (_taskbarCount == 0) return true;
+        for (int i = 0; i < _taskbarCount; i++)
+            if (!IsWindow(Taskbars[i])) return true;
+        return false;
+    }
+
+    static void ApplyAccent(int state)
+    {
+        if (TaskbarsStale()) RefreshTaskbars();
+        for (int i = 0; i < _taskbarCount; i++)
+            SetAccent(Taskbars[i], state);
+    }
+
     static IntPtr FindTaskList(IntPtr tray)
     {
         var rebar = FindWindowEx(tray, IntPtr.Zero, "ReBarWindow32", null);
         var sw = FindWindowEx(rebar, IntPtr.Zero, "MSTaskSwWClass", null);
         return FindWindowEx(sw, IntPtr.Zero, "MSTaskListWClass", null);
     }
-    const int AdjustX = 28; // positivo move para a direita, negativo para a esquerda
+
+    static bool EnsureHandles()
+    {
+        if (!IsWindow(_tray) || !IsWindow(_list) || !IsWindow(_parent))
+        {
+            _tray = FindWindow("Shell_TrayWnd", null);
+            _list = _tray == IntPtr.Zero ? IntPtr.Zero : FindTaskList(_tray);
+            _parent = _list == IntPtr.Zero ? IntPtr.Zero : GetParent(_list);
+        }
+        return _list != IntPtr.Zero && _parent != IntPtr.Zero;
+    }
+
+    static void EnsureHook()
+    {
+        if (!EnsureHandles()) return;
+        GetWindowThreadProcessId(_tray, out uint pid);
+        if (_hook != IntPtr.Zero && pid == _explorerPid) return;
+
+        if (_hook != IntPtr.Zero)
+        {
+            UnhookWinEvent(_hook);
+            _hook = IntPtr.Zero;
+        }
+
+        _explorerPid = pid;
+        _hook = SetWinEventHook(
+            EVENT_OBJECT_CREATE, EVENT_OBJECT_NAMECHANGE,
+            IntPtr.Zero, EventProc, pid, 0,
+            WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+    }
+
+    static void OnWinEvent(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
+        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
+    {
+        if (hwnd == IntPtr.Zero || _exiting) return;
+        if (eventType == EVENT_OBJECT_LOCATIONCHANGE)
+        {
+            if (hwnd != _list) return;
+        }
+        else if (hwnd != _list && hwnd != _tray && hwnd != _parent)
+        {
+            return;
+        }
+        RequestCenter();
+    }
+
+    static void RequestCenter()
+    {
+        if (IsWin11 || _hwnd == IntPtr.Zero) return;
+        KillTimer(_hwnd, ID_DEBOUNCE);
+        SetTimer(_hwnd, ID_DEBOUNCE, 80, IntPtr.Zero);
+    }
+
+    static void AddBounds(IAccessible acc, object child, ref int left, ref int right)
+    {
+        acc.accLocation(out int x, out int _, out int w, out int h, child);
+        if (w <= 0 || h <= 0) return;
+        if (x < left) left = x;
+        int r = x + w;
+        if (r > right) right = r;
+    }
+
+    static void CollectButtonBounds(IAccessible acc, ref int left, ref int right)
+    {
+        int count;
+        try { count = acc.accChildCount; }
+        catch { return; }
+        if (count <= 0) return;
+
+        var kids = new object[count];
+        if (AccessibleChildren(acc, 0, count, kids, out int got) == 0 && got > 0)
+        {
+            for (int i = 0; i < got; i++)
+            {
+                switch (kids[i])
+                {
+                    case int id:
+                        AddBounds(acc, id, ref left, ref right);
+                        break;
+                    case IAccessible child:
+                        try { AddBounds(child, CHILDID_SELF, ref left, ref right); }
+                        finally { Marshal.ReleaseComObject(child); }
+                        break;
+                }
+            }
+            return;
+        }
+
+        for (int i = 1; i <= count; i++)
+            AddBounds(acc, i, ref left, ref right);
+    }
 
     static void Center()
     {
-        var tray = FindWindow("Shell_TrayWnd", null);
-        if (tray == IntPtr.Zero) return;
-        var list = FindTaskList(tray);
-        if (list == IntPtr.Zero) return;
-        var parent = GetParent(list);
+        if (!EnsureHandles()) return;
 
-        GetWindowRect(tray, out var t);
-        GetWindowRect(list, out var l);
+        GetWindowRect(_tray, out var t);
+        GetWindowRect(_list, out var l);
 
-        var buttons = AutomationElement.FromHandle(list)
-            .FindAll(TreeScope.Children, Condition.TrueCondition);
+        var iid = IidIAccessible;
+        if (AccessibleObjectFromWindow(_list, OBJID_CLIENT, ref iid, out var obj) != 0 || obj is not IAccessible acc)
+            return;
 
-        double left = double.MaxValue, right = double.MinValue;
-        foreach (AutomationElement b in buttons)
-        {
-            var r = b.Current.BoundingRectangle;
-            if (r.IsEmpty) continue;
-            left = Math.Min(left, r.Left);
-            right = Math.Max(right, r.Right);
-        }
+        int left = int.MaxValue, right = int.MinValue;
+        try { CollectButtonBounds(acc, ref left, ref right); }
+        finally { Marshal.ReleaseComObject(acc); }
+
         if (left > right) return;
 
-        int width = (int)(right - left);
-        int offset = (int)left - l.Left; // onde o 1º botão começa dentro da lista
+        int width = right - left;
+        int offset = left - l.Left;
         int targetScreenX = t.Left + ((t.Right - t.Left) - width) / 2 - offset + AdjustX;
-
-        if (Math.Abs(l.Left - targetScreenX) <= 1) return; // já está no lugar
+        if (Math.Abs(l.Left - targetScreenX) <= 1) return;
 
         var p = new POINT { X = targetScreenX, Y = l.Top };
-        ScreenToClient(parent, ref p);
-        SetWindowPos(list, IntPtr.Zero, p.X, p.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        ScreenToClient(_parent, ref p);
+        SetWindowPos(_list, IntPtr.Zero, p.X, p.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
     static void RestorePosition()
     {
-        var tray = FindWindow("Shell_TrayWnd", null);
-        var list = FindTaskList(tray);
-        if (list == IntPtr.Zero) return;
-        GetWindowRect(list, out var l);
+        if (!EnsureHandles()) return;
+        GetWindowRect(_list, out var l);
         var p = new POINT { X = l.Left, Y = l.Top };
-        ScreenToClient(GetParent(list), ref p);
-        SetWindowPos(list, IntPtr.Zero, 0, p.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        ScreenToClient(_parent, ref p);
+        SetWindowPos(_list, IntPtr.Zero, 0, p.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
-    // ---------- App ----------
+    static void ShowMenu()
+    {
+        var menu = CreatePopupMenu();
+        if (menu == IntPtr.Zero) return;
+        AppendMenuW(menu, MF_STRING, (nuint)ID_EXIT, "Sair");
+        GetCursorPos(out var pt);
+        SetForegroundWindow(_hwnd);
+        TrackPopupMenu(menu, TPM_RIGHTBUTTON, pt.X, pt.Y, 0, _hwnd, IntPtr.Zero);
+        PostMessageW(_hwnd, WM_NULL, IntPtr.Zero, IntPtr.Zero);
+        DestroyMenu(menu);
+    }
+
+    static void ExitApp()
+    {
+        if (_exiting) return;
+        _exiting = true;
+        KillTimer(_hwnd, ID_KEEPALIVE);
+        KillTimer(_hwnd, ID_DEBOUNCE);
+        if (_hook != IntPtr.Zero)
+        {
+            UnhookWinEvent(_hook);
+            _hook = IntPtr.Zero;
+        }
+        try
+        {
+            ApplyAccent(ACCENT_DISABLED);
+            RestorePosition();
+        }
+        catch { }
+
+        var nid = TrayData();
+        Shell_NotifyIconW(NIM_DELETE, ref nid);
+        DestroyWindow(_hwnd);
+    }
+
+    static NOTIFYICONDATA TrayData() => new()
+    {
+        cbSize = Marshal.SizeOf<NOTIFYICONDATA>(),
+        hWnd = _hwnd,
+        uID = 1,
+        uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP,
+        uCallbackMessage = WM_TRAY,
+        hIcon = _iconSmall != IntPtr.Zero ? _iconSmall : _iconLarge,
+        szTip = $"TricBar - build {Build}",
+        szInfo = "",
+        szInfoTitle = ""
+    };
+
+    static IntPtr WndProcImpl(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
+    {
+        switch (msg)
+        {
+            case WM_TRAY:
+                if (lParam == (IntPtr)WM_RBUTTONUP) ShowMenu();
+                return IntPtr.Zero;
+            case WM_COMMAND:
+                if ((int)wParam == ID_EXIT) ExitApp();
+                return IntPtr.Zero;
+            case WM_TIMER:
+                if (wParam == (IntPtr)(long)ID_DEBOUNCE)
+                {
+                    KillTimer(hWnd, ID_DEBOUNCE);
+                    try { Center(); } catch { }
+                }
+                else if (wParam == (IntPtr)(long)ID_KEEPALIVE)
+                {
+                    try
+                    {
+                        ApplyAccent(ACCENT_ENABLE_TRANSPARENTGRADIENT);
+                        if (!IsWin11)
+                        {
+                            EnsureHook();
+                            if (++_safety >= 4)
+                            {
+                                _safety = 0;
+                                Center();
+                            }
+                        }
+                    }
+                    catch { }
+                }
+                return IntPtr.Zero;
+            case WM_DESTROY:
+                PostQuitMessage(0);
+                return IntPtr.Zero;
+        }
+        return DefWindowProcW(hWnd, msg, wParam, lParam);
+    }
+
     [STAThread]
     static void Main()
     {
-        SetProcessDPIAware(); // precisa vir antes de qualquer coisa, senão as coordenadas ficam erradas
+        SetProcessDPIAware();
 
         using var mutex = new Mutex(true, "TaskbarLite_SingleInstance", out bool isNew);
         if (!isNew) return;
 
-        var timer = new Timer { Interval = 500 };
-        timer.Tick += (_, _) =>
+        _accentSize = Marshal.SizeOf<ACCENT>();
+        _accentMem = Marshal.AllocHGlobal(_accentSize);
+
+        var hInst = GetModuleHandleW(null);
+        var wndProcPtr = Marshal.GetFunctionPointerForDelegate(WindowProcKeepAlive);
+        var wc = new WNDCLASS
         {
-            try
+            style = CS_DBLCLKS,
+            lpfnWndProc = wndProcPtr,
+            hInstance = hInst,
+            lpszClassName = "TricBarHidden"
+        };
+        if (RegisterClassW(ref wc) == 0) return;
+
+        _hwnd = CreateWindowExW(0, "TricBarHidden", "TricBar", 0, 0, 0, 0, 0,
+            new IntPtr(-3), IntPtr.Zero, hInst, IntPtr.Zero); // HWND_MESSAGE
+        if (_hwnd == IntPtr.Zero) return;
+
+        var path = Environment.ProcessPath;
+        if (!string.IsNullOrEmpty(path))
+            ExtractIconExW(path, 0, out _iconLarge, out _iconSmall, 1);
+        if (_iconSmall == IntPtr.Zero && _iconLarge == IntPtr.Zero)
+            _iconSmall = LoadIconW(IntPtr.Zero, (IntPtr)32512); // IDI_APPLICATION
+
+        var nid = TrayData();
+        Shell_NotifyIconW(NIM_ADD, ref nid);
+
+        try
+        {
+            ApplyAccent(ACCENT_ENABLE_TRANSPARENTGRADIENT);
+            if (!IsWin11)
             {
-                ForEachTaskbar(h => SetAccent(h, 2)); // 2 = TRANSPARENTGRADIENT
+                EnsureHook();
                 Center();
             }
-            catch { /* explorer reiniciando, UIA indisponível etc. — tenta de novo no próximo tick */ }
-        };
+        }
+        catch { }
 
-        var menu = new ContextMenuStrip();
-        var icon = new NotifyIcon
-        {
-            Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application,
-            Text = "TricBar",
-            Visible = true,
-            ContextMenuStrip = menu
-        };
-        menu.Items.Add("Sair", null, (_, _) =>
-        {
-            timer.Stop();
-            try { ForEachTaskbar(h => SetAccent(h, 0)); RestorePosition(); } catch { }
-            icon.Visible = false;
-            Application.Exit();
-        });
+        SetTimer(_hwnd, ID_KEEPALIVE, 1500, IntPtr.Zero);
 
-        timer.Start();
-        Application.Run();
+        MSG msg;
+        while (GetMessageW(out msg, IntPtr.Zero, 0, 0) > 0)
+        {
+            TranslateMessage(ref msg);
+            DispatchMessageW(ref msg);
+        }
+
+        if (_hook != IntPtr.Zero) UnhookWinEvent(_hook);
+        if (_iconLarge != IntPtr.Zero) DestroyIcon(_iconLarge);
+        if (_iconSmall != IntPtr.Zero) DestroyIcon(_iconSmall);
+        Marshal.FreeHGlobal(_accentMem);
     }
 }
