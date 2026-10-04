@@ -16,7 +16,7 @@ A tiny, lightweight tray app that makes your taskbar transparent and keeps your 
 ## Requirements
 
 - Windows 10
-- [.NET 8 Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/8.0)
+- [.NET 8 Desktop Runtime (x64)](https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/8.0.31/windowsdesktop-runtime-8.0.31-win-x64.exe)
 
 ## Installation
 
@@ -70,7 +70,7 @@ Um app leve que fica na bandeja do sistema, deixa a barra de tarefas transparent
 ## Requisitos
 
 - Windows 10
-- [.NET 8 Desktop Runtime (x64)](https://dotnet.microsoft.com/pt-br/download/dotnet/8.0)
+- [.NET 8 Desktop Runtime (x64)](https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/8.0.31/windowsdesktop-runtime-8.0.31-win-x64.exe)
 
 ## Instalação
 
@@ -84,6 +84,24 @@ Para iniciar com o Windows, aperte `Win + R`, digite `shell:startup` e coloque u
 
 O TricBar fica na bandeja do sistema (perto do relógio). Clique com o botão direito no ícone e escolha **Sair** para fechar e restaurar a barra.
 
-## Ajustar a posição
+## Ajustando a posição
 
-Se os ícones estiverem alguns pixels fora do centro na sua tela, mude o `AdjustX` no
+Se os ícones parecerem estar alguns pixels fora do centro na sua tela, altere `AdjustX` no arquivo `Program.cs` (valores positivos movem para a direita, negativos para a esquerda) e recompile:
+
+```csharp
+const int AdjustX = 35;
+```
+
+## Compilar a partir do código-fonte
+
+```powershell
+git clone https://github.com/superplexx/TricBar.git
+cd TricBar
+dotnet run
+```
+
+Para publicar um único arquivo `.exe`:
+
+```powershell
+dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true
+```
