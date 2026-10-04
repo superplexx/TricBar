@@ -1,5 +1,7 @@
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Threading;
 
 namespace TricBar;
@@ -19,6 +21,11 @@ static class Program
     const int AdjustX = 28; // positivo move para a direita, negativo para a esquerda
     const int CHILDID_SELF = 0;
     const int MaxTaskbars = 16;
+    const int XamlTaskbarBuild = 22621; // Windows 11 22H2+: fundo da barra e XAML
+    const int MaxTapAttempts = 5;       // tentativas por processo do Explorer
+    const int MaxTapInjections = 8;     // limite total por execucao (evita loop se o Explorer cair)
+    const string TapAliveName = "TricBar_TAP_Alive";
+    const string TapAppliedName = "TricBar_TAP_Applied";
 
     const int WM_DESTROY = 0x0002;
     const int WM_COMMAND = 0x0111;
@@ -30,7 +37,7 @@ static class Program
     const int ID_EXIT = 1;
     const nuint ID_KEEPALIVE = 1;
     const nuint ID_DEBOUNCE = 2;
-    const uint NIM_ADD = 0, NIM_DELETE = 2;
+    const uint NIM_ADD = 0, NIM_MODIFY = 1, NIM_DELETE = 2;
     const uint NIF_MESSAGE = 1, NIF_ICON = 2, NIF_TIP = 4;
     const uint MF_STRING = 0;
     const uint TPM_RIGHTBUTTON = 0x0002;
@@ -99,6 +106,14 @@ static class Program
         int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
     delegate IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    delegate int InitXamlDiagnosticsEx(
+        [MarshalAs(UnmanagedType.LPWStr)] string endPointName, uint pid,
+        [MarshalAs(UnmanagedType.LPWStr)] string dllXamlDiagnostics,
+        [MarshalAs(UnmanagedType.LPWStr)] string tapDllName,
+        Guid tapClsid,
+        [MarshalAs(UnmanagedType.LPWStr)] string? initializationData);
+
     [StructLayout(LayoutKind.Sequential)] struct RECT { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
     [StructLayout(LayoutKind.Sequential)]
@@ -164,7 +179,9 @@ static class Program
     }
 
     static readonly int Build = Environment.OSVersion.Version.Build;
-    static readonly bool IsWin11 = Build >= 22000;
+    static readonly bool SupportsAutoCentering = Build < 22000;
+    static readonly bool UseXamlTap = Build >= XamlTaskbarBuild;
+    static readonly Guid TapClsid = new("B7C0A2E1-5D34-4F6A-9E81-3C7A1D5F2B90"); // igual ao da TricBarTap.cpp
     static readonly Guid IidIAccessible = new("618736E0-3C3D-11CF-810C-00AA00389B71");
     static readonly WinEventDelegate EventProc = OnWinEvent;
     static readonly WndProc WindowProcKeepAlive = WndProcImpl;
@@ -177,10 +194,19 @@ static class Program
     static int _accentSize, _safety;
     static bool _exiting;
 
+    // Windows 11 22H2+ (TricBarTap.dll injetada no Explorer)
+    static EventWaitHandle? _tapAlive, _tapApplied;
+    static InitXamlDiagnosticsEx? _initXamlDiag;
+    static string? _tapPath;
+    static string _tipSuffix = "";
+    static uint _tapPid;
+    static int _tapAttempts, _tapInjections, _tapBusy;
+    static long _tapNextTry;
+
     static void SetAccent(IntPtr hwnd, int state)
     {
         if (hwnd == IntPtr.Zero) return;
-        var accent = new ACCENT { State = state, Flags = 2, Color = 0x00000000 };
+        var accent = new ACCENT { State = state, Flags = 0, Color = 0x00000000 };
         Marshal.StructureToPtr(accent, _accentMem, false);
         var data = new WCAD { Attribute = WCA_ACCENT_POLICY, Data = _accentMem, Size = _accentSize };
         SetWindowCompositionAttribute(hwnd, ref data);
@@ -267,7 +293,7 @@ static class Program
 
     static void RequestCenter()
     {
-        if (IsWin11 || _hwnd == IntPtr.Zero) return;
+        if (!SupportsAutoCentering || _hwnd == IntPtr.Zero) return;
         KillTimer(_hwnd, ID_DEBOUNCE);
         SetTimer(_hwnd, ID_DEBOUNCE, 80, IntPtr.Zero);
     }
@@ -347,6 +373,103 @@ static class Program
         SetWindowPos(_list, IntPtr.Zero, 0, p.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
+    // ---- Windows 11 22H2+: transparencia via TricBarTap.dll (XAML Diagnostics) ----
+
+    // Copia a DLL para %LOCALAPPDATA%\TricBar com o hash no nome. O Explorer fica com a DLL
+    // carregada ate reiniciar; assim a pasta do app nunca fica travada e atualizar o TricBar
+    // gera outro arquivo em vez de falhar.
+    static string? PrepareTapDll()
+    {
+        try
+        {
+            string src = Path.Combine(AppContext.BaseDirectory, "TricBarTap.dll");
+            if (!File.Exists(src)) return null;
+
+            byte[] bytes = File.ReadAllBytes(src);
+            string hash = Convert.ToHexString(SHA256.HashData(bytes)).Substring(0, 12);
+            string dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TricBar");
+            Directory.CreateDirectory(dir);
+
+            string name = $"TricBarTap-{hash}.dll";
+            string dst = Path.Combine(dir, name);
+            if (!File.Exists(dst)) File.WriteAllBytes(dst, bytes);
+
+            foreach (var old in Directory.GetFiles(dir, "TricBarTap-*.dll"))
+            {
+                if (!string.Equals(Path.GetFileName(old), name, StringComparison.OrdinalIgnoreCase))
+                {
+                    try { File.Delete(old); } catch { } // ainda carregada no Explorer: fica pra depois
+                }
+            }
+            return dst;
+        }
+        catch { return null; }
+    }
+
+    static void InjectTap(uint pid, string dll)
+    {
+        if (_initXamlDiag == null)
+        {
+            var lib = NativeLibrary.Load(Path.Combine(Environment.SystemDirectory, "Windows.UI.Xaml.dll"));
+            var proc = NativeLibrary.GetExport(lib, "InitializeXamlDiagnosticsEx");
+            _initXamlDiag = Marshal.GetDelegateForFunctionPointer<InitXamlDiagnosticsEx>(proc);
+        }
+        _initXamlDiag("VisualDiagConnection1", pid, string.Empty, dll, TapClsid, null);
+    }
+
+    static void EnsureTap()
+    {
+        if (!UseXamlTap || _exiting || _tapAlive == null || _tapApplied == null) return;
+        if (_tapPath == null)
+        {
+            _tipSuffix = " - falta TricBarTap.dll";
+            return;
+        }
+
+        var tray = FindWindow("Shell_TrayWnd", null);
+        if (tray == IntPtr.Zero) return;
+        GetWindowThreadProcessId(tray, out uint pid);
+        if (pid == 0) return;
+
+        if (pid != _tapPid) // Explorer novo (ou primeira vez): tudo de novo
+        {
+            _tapPid = pid;
+            _tapApplied.Reset();
+            _tapAttempts = 0;
+            _tapNextTry = 0;
+        }
+
+        if (_tapApplied.WaitOne(0))
+        {
+            _tipSuffix = " - ativo";
+            return;
+        }
+        if (_tapAttempts >= MaxTapAttempts || _tapInjections >= MaxTapInjections)
+        {
+            _tipSuffix = " - falha ao aplicar";
+            return;
+        }
+
+        long now = Environment.TickCount64;
+        if (now < _tapNextTry) return;
+        if (Interlocked.Exchange(ref _tapBusy, 1) != 0) return;
+
+        _tapAttempts++;
+        _tapInjections++;
+        _tapNextTry = now + 5000;
+
+        string dll = _tapPath;
+        var worker = new Thread(() =>
+        {
+            try { InjectTap(pid, dll); }
+            catch { }
+            finally { Volatile.Write(ref _tapBusy, 0); }
+        })
+        { IsBackground = true };
+        worker.Start();
+    }
+
     static void ShowMenu()
     {
         var menu = CreatePopupMenu();
@@ -372,10 +495,13 @@ static class Program
         }
         try
         {
-            ApplyAccent(ACCENT_DISABLED);
+            if (!UseXamlTap) ApplyAccent(ACCENT_DISABLED);
             RestorePosition();
         }
         catch { }
+
+        // O TricBarTap.dll (no Explorer) devolve o fundo original quando este evento some.
+        try { _tapAlive?.Dispose(); } catch { }
 
         var nid = TrayData();
         Shell_NotifyIconW(NIM_DELETE, ref nid);
@@ -390,10 +516,19 @@ static class Program
         uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP,
         uCallbackMessage = WM_TRAY,
         hIcon = _iconSmall != IntPtr.Zero ? _iconSmall : _iconLarge,
-        szTip = $"TricBar - build {Build}",
+        szTip = $"TricBar - build {Build}{_tipSuffix}",
         szInfo = "",
         szInfoTitle = ""
     };
+
+    // Se o Explorer reiniciar, o ícone da bandeja some. NIM_MODIFY falha quando o ícone não existe,
+    // e aí a gente adiciona de novo. (A janela é "message-only", então não recebe o broadcast TaskbarCreated.)
+    static void EnsureTrayIcon()
+    {
+        var nid = TrayData();
+        if (!Shell_NotifyIconW(NIM_MODIFY, ref nid))
+            Shell_NotifyIconW(NIM_ADD, ref nid);
+    }
 
     static IntPtr WndProcImpl(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
@@ -415,8 +550,10 @@ static class Program
                 {
                     try
                     {
-                        ApplyAccent(ACCENT_ENABLE_TRANSPARENTGRADIENT);
-                        if (!IsWin11)
+                        if (UseXamlTap) EnsureTap();
+                        EnsureTrayIcon();
+                        if (!UseXamlTap) ApplyAccent(ACCENT_ENABLE_TRANSPARENTGRADIENT);
+                        if (SupportsAutoCentering)
                         {
                             EnsureHook();
                             if (++_safety >= 4)
@@ -441,8 +578,15 @@ static class Program
     {
         SetProcessDPIAware();
 
-        using var mutex = new Mutex(true, "TaskbarLite_SingleInstance", out bool isNew);
+        using var mutex = new Mutex(true, "TricBar_SingleInstance", out bool isNew);
         if (!isNew) return;
+
+        if (UseXamlTap)
+        {
+            _tapAlive = new EventWaitHandle(false, EventResetMode.ManualReset, TapAliveName);
+            _tapApplied = new EventWaitHandle(false, EventResetMode.ManualReset, TapAppliedName);
+            _tapPath = PrepareTapDll();
+        }
 
         _accentSize = Marshal.SizeOf<ACCENT>();
         _accentMem = Marshal.AllocHGlobal(_accentSize);
@@ -473,11 +617,18 @@ static class Program
 
         try
         {
-            ApplyAccent(ACCENT_ENABLE_TRANSPARENTGRADIENT);
-            if (!IsWin11)
+            if (UseXamlTap)
             {
-                EnsureHook();
-                Center();
+                EnsureTap();
+            }
+            else
+            {
+                ApplyAccent(ACCENT_ENABLE_TRANSPARENTGRADIENT);
+                if (SupportsAutoCentering)
+                {
+                    EnsureHook();
+                    Center();
+                }
             }
         }
         catch { }
