@@ -11,10 +11,9 @@ A tiny, lightweight tray app that makes your taskbar transparent and centers you
 - Transparent taskbar
 - Icons centered automatically on Windows 10 (updates when you open or close apps)
 - On Windows 11, applies transparency only; Windows 11 already centers the icons
-- Windows 11 22H2+ uses a small native helper (`TricBarTap.dll`, must stay next to `TricBar.exe`)
+- Windows 11 22H2+ uses a small native helper (`TricBarTap.dll`, must stay next to `TricBar.exe`, or in the same folder)
 - Runs quietly in the system tray
 - Restores the default taskbar when you exit
-- On Windows 10, use the Stable Version v1.0.3!
 
 ## Requirements
 
@@ -78,10 +77,9 @@ Um app leve que fica na bandeja do sistema, deixa a barra de tarefas transparent
 - Barra de tarefas transparente
 - Ícones centralizados automaticamente no Windows 10 (atualiza ao abrir ou fechar apps)
 - No Windows 11, aplica apenas a transparência; o próprio Windows 11 já centraliza os ícones
-- No Windows 11 22H2+ usa um pequeno componente nativo (`TricBarTap.dll`, que precisa ficar ao lado do `TricBar.exe`)
+- No Windows 11 22H2+ usa um pequeno componente nativo (`TricBarTap.dll`, que precisa ficar ao lado do `TricBar.exe`, ou simplesmente na mesma pasta)
 - Roda discretamente na bandeja do sistema
 - Restaura a barra padrão ao fechar
-- No Windows 10 use a Versão Estável v1.0.3
 
 ## Requisitos
 
