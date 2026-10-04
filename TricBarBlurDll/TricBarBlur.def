@@ -1,4 +1,0 @@
-LIBRARY TricBarBlur
-EXPORTS
-    DllGetClassObject PRIVATE
-    DllCanUnloadNow   PRIVATE
