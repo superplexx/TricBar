@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AssemblyName>TricBarLauncher</AssemblyName>
+    <RootNamespace>TricBarLauncher</RootNamespace>
+    <AssemblyTitle>TricBar Launcher</AssemblyTitle>
+    <Product>TricBar</Product>
+    <Company>Superplex</Company>
+    <Description>TricBar settings window</Description>
+    <Version>3.2.0</Version>
+    <Copyright>© 2026 Superplex</Copyright>
+    <ApplicationIcon>..\icon.ico</ApplicationIcon>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+</Project>
