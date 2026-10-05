@@ -44,6 +44,7 @@ TricBar therefore uses a small native helper loaded into `explorer.exe` through 
 
 The helper makes the XAML taskbar background transparent, allowing the Blur, Acrylic or color effect applied by TricBar to become visible.
 
+##(Relax, the DLL on Explorer.exe dont give ban in Games)
 ---
 
 ## Components
@@ -418,8 +419,9 @@ O TricBar utiliza uma pequena DLL nativa carregada dentro do `explorer.exe` atra
 
 O funcionamento é semelhante ao mecanismo utilizado por ferramentas como TranslucentTB e o mod Windows 11 Taskbar Styler do Windhawk.
 
-A DLL torna transparente o elemento XAML responsável pelo fundo da barra, permitindo que o efeito de composição aplicado pelo TricBar apareça.
+A DLL torna transparente o elemento XAML responsável pelo fundo da barra, permitindo que o efeito de composição aplicado pelo TricBar apareça
 
+##(Relaxe, a DLL no Explorer.exe não da Ban em jogos)
 ---
 
 ## Componentes
