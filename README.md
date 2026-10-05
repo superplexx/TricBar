@@ -22,7 +22,10 @@ TricBar is a lightweight tray application that makes the Windows taskbar transpa
 * Automatically restores the default taskbar when closed
 * Detects whether the Windows 11 taskbar was successfully modified
 * Can run quietly in the background
-* Do not use TricBar in VMs, or the app doesn't run
+* Uses 4-8mb of ram and 0% of cpu
+  
+
+
 
 ---
 
@@ -397,8 +400,7 @@ No Windows 11, o TricBar pode aplicar efeitos como **Transparente, Blur, Acrylic
 * Restaura a barra padrão ao fechar
 * Detecta quando a barra do Windows 11 foi encontrada
 * Executa silenciosamente em segundo plano
-* Não use VMs, ou o TricBar não funcionará
-
+* o TricBar usa apenas 4-8mb de ram e 0% de cpu
 ---
 
 ## Como funciona
